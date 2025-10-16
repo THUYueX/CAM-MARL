@@ -142,7 +142,7 @@ class GridWorldEnv:
         if np.max(self.light_score_map) > 0:
             light_display = self.ax.imshow(self.light_score_map.T, 
                                         cmap='Greens',  # 绿色光谱
-                                        alpha=0.6,      # 透明度
+                                        alpha=0.2,      # 透明度
                                         extent=[0, self.n_length, 0, self.n_width],
                                         origin='lower', 
                                         vmin=0.0,

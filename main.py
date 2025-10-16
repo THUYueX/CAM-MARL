@@ -16,9 +16,9 @@ def main():
     env = GridWorldEnv(length = 3.0, 
                        width = 2.0, 
                        grid_size = 0.05, 
-                       num_agent = 32,
+                       num_agent = 2,
                        num_target = 1,
-                       num_obstacles = 50)
+                       num_obstacles = 100)
     #重置环境
     state = env.reset()
     #创建Target

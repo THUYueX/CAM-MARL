@@ -1,13 +1,53 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import random
 from sensor import SensorSuite
 from collections import deque
 
+class ActorNetwork(nn.Module):
+    """演员 - 策略网络(action)"""
+    def __init__(self, input_dim, hidden_dims = [128, 64], output_dim = 8):
+        super().__init__()
+        layers = []
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(0.1)
+            ])
+            prev_dim = hidden_dim
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.network = nn.Sequential(*layers)
+    def forward(self, x):
+        x = self.network(x)
+        return F.softmax(x, dim = -1) #输出动作概率
+    
+class CriticNetwork(nn.Module):
+    """评论家 - 价值函数网络Q(critic)"""
+    def __init__(self, state_dim, action_dim, hidden_dims = [128, 64], output_dim = 1):
+        super().__init__()
+        input_dim = state_dim + action_dim
+        layers = []
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(0.1)
+            ])
+            prev_dim = hidden_dim
+            layers.append(nn.Linear(prev_dim, output_dim))
+            self.network = nn.Sequential(*layers)
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim = 1)
+        return self.network(x)
+
 class ValueMapNetwork(nn.Module):
-    """价值地图生成网络"""
+    """价值地图生成网络dnn 用于生成地图内在奖励"""
     def __init__(self, input_dim, hidden_dims = [128, 64], output_dim = 1):
         super().__init__()
         layers = []
@@ -24,17 +64,59 @@ class ValueMapNetwork(nn.Module):
         self.network = nn.Sequential(*layers)
     def forward(self, x):
         return self.network(x)
+    
+class MARLAgent:
+    """多智能体Agent"""
+    def __init__(self, agent_id, obs_dim, lr = 0.001, gamma = 0.5):
+        self.agent_id = agent_id
+
+        self.value_net = ValueMapNetwork(obs_dim)
+        self.optimizer = optim.Adam(self.value_net.parameters(), lr = lr)
+        self.criterion = nn.MSELoss()
+
+        self.gamma = gamma
+        self.obs_module = ObservationModule(agent_id)
+        self.comm_module = CommunicationModule(gamma)
+
+        self.epsilon = 1.0
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995
+
+        #经验缓存
+        self.memory = deque(maxlen = 5000)
+        self.batch_size = 32
+    def choose_action(self, env, movement_direction):
+        observation = self.obs_module.get_observations(env, movement_direction)
+        #使用epsilon贪心策略
+        if random.random() < self.epsilon:
+            return random.randint(0, 7)
+        else:
+            return random.randint(0, 7)
+    
+    def _network_based_action(self, env, observation):
+        #将观测转换为网络输入
+        obs_vector = self._observation_to_vector(observation)
+
+    def _observation_to_vector(self, observation, env):
+        return torch.tensor(observation).float()
+
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+    
+    def learn(self):
+        if len(self.memory) < self.batch_size:
+            return
+        batch = random.sample(self.memory, self.batch_size)
+        #TODO 实现学习逻辑
+
+        #衰减探索率
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
 
 class ObservationModule:
     """观测-感知模块  不属于框架内容"""
     def __init__(self, agent_id, obstacle_perception_radius = 10, light_perception_radius = 1,  ir_perception_radius = 2):
-        """初始化智能体
-        Args:
-            agent_id: 智能体唯一标识
-            obstacle_perception_radius: 障碍物感知半径，默认10
-            light_perception_radius: 光源感知半径，默认1
-            ir_perception_radius: 红外感知半径，默认2
-        """
+        """初始化智能体"""
         self.agent_id = agent_id
         # 初始化传感器套件
         self.sensor_suite = SensorSuite(obstacle_perception_radius, light_perception_radius, ir_perception_radius)
@@ -122,42 +204,3 @@ class CommunicationModule:
         fused_neighbor_info = np.mean(neighbor_obs_array, axis = 0)
         fused_obs = self_obs + self.gamma * fused_neighbor_info
         return fused_obs
-    
-class MARLAgent:
-    """多智能体Agent"""
-    def __init__(self, agent_id, obs_dim, lr = 0.001, gamma = 0.5):
-        self.agent_id = agent_id
-
-        self.value_net = ValueMapNetwork(obs_dim)
-        self.optimizer = optim.Adam(self.value_net.parameters(), lr = lr)
-        self.criterion = nn.MSELoss()
-
-        self.gamma = gamma
-        self.obs_module = ObservationModule(agent_id)
-        self.comm_module = CommunicationModule(gamma)
-
-        self.epsilon = 1.0
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
-
-        #经验缓存
-        self.memory = deque(maxlen = 5000)
-        self.batch_size = 32
-    def choose_action(self, env, movement_direction):
-        observation = self.obs_module.get_observations(env, movement_direction)
-        
-        #TODO 基于价值地图选择动作 先随即返回一个随机动作
-        return random.randint(0, 7)
-    
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
-    
-    def learn(self):
-        if len(self.memory) < self.batch_size:
-            return
-        batch = random.sample(self.memory, self.batch_size)
-        #TODO 实现学习逻辑
-
-        #衰减探索率
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay

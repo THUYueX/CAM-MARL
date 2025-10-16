@@ -21,8 +21,8 @@ class GridWorldEnv:
         self.num_target = num_target
         self.target_pos = []
         self.agent_directions = [random.randint(0, 7) for _ in range(num_agent)]  # 每个机器人的运动方向
-        self.obstacle_score_map = np.zeros((self.n_length, self.n_width))  # 障碍物梯度地图
-        self.light_score_map = np.zeros((self.n_length, self.n_width))  # 光照地图
+        self.obstacle_score_map = np.zeros((self.n_length, self.n_width))  # 障碍价值地图
+        self.light_score_map = np.zeros((self.n_length, self.n_width))  # 光照价值地图
         # 渲染相关
         self.fig = None
         self.ax = None
